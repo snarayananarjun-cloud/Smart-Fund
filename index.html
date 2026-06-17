@@ -103,6 +103,9 @@
     text-align:center;margin-top:20px;font-size:14.5px;color:var(--ink-soft);cursor:pointer;
   }
   .login-toggle b{color:var(--ink);font-weight:600;}
+  #forgot-password-link{
+    margin-top:10px;font-size:13px;text-decoration:underline;
+  }
   .login-error{
     color:var(--error);font-size:14px;margin-bottom:16px;display:none;
   }
@@ -331,6 +334,18 @@
     <input class="login-input welcome-input" id="login-password" type="password" placeholder="Password" autocomplete="current-password" />
     <button class="login-btn" id="login-submit-btn" onclick="handleAuthSubmit()">Confirm</button>
     <div class="login-toggle" id="login-toggle" onclick="toggleAuthMode()">First time here? <b>Set up your password</b></div>
+    <div class="login-toggle" id="forgot-password-link" onclick="handleForgotPassword()">Forgot your password?</div>
+  </div>
+
+  <!-- ===================== RESET PASSWORD SCREEN ===================== -->
+  <div class="screen" id="screen-reset-password">
+    <img class="welcome-illustration" src="welcome-illustration.png" alt="" />
+    <div class="welcome-eyebrow">Almost there</div>
+    <div class="welcome-title">Set a new password</div>
+    <div class="welcome-sub">Choose a new password for your account.</div>
+    <div class="login-error" id="reset-password-error"></div>
+    <input class="login-input welcome-input" id="reset-password-input" type="password" placeholder="New password" autocomplete="new-password" />
+    <button class="login-btn" id="reset-password-submit-btn" onclick="handleResetPasswordSubmit()">Save new password</button>
   </div>
 
   <!-- ===================== HOME SCREEN ===================== -->
@@ -535,7 +550,42 @@ function toggleAuthMode(){
   document.getElementById('login-toggle').innerHTML = authMode === 'signin'
     ? 'First time here? <b>Set up your password</b>'
     : 'Already set up? <b>Sign in instead</b>';
+  document.getElementById('forgot-password-link').style.display = authMode === 'signin' ? 'block' : 'none';
   document.getElementById('login-error').classList.remove('show');
+}
+
+async function handleForgotPassword(){
+  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  document.getElementById('login-error').classList.remove('show');
+
+  if(!email){
+    showLoginError('Type your email above first, then tap "Forgot your password?".');
+    return;
+  }
+  if(!ALLOWED_EMAILS.includes(email)){
+    showLoginError('That email is not on the allowed list.');
+    return;
+  }
+
+  const link = document.getElementById('forgot-password-link');
+  const originalText = link.textContent;
+  link.textContent = 'Sending reset link…';
+
+  try{
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname
+    });
+    if(error) throw error;
+    await openConfirmModal({
+      title: 'Check your inbox',
+      sub: `We sent a password reset link to ${email}. Tap it, choose a new password there, then come back here and sign in with it.`,
+      confirmLabel: 'Got it'
+    });
+  }catch(err){
+    showLoginError(err.message || 'Could not send reset link. Try again.');
+  }finally{
+    link.textContent = originalText;
+  }
 }
 
 async function handleAuthSubmit(){
@@ -1073,12 +1123,50 @@ async function refreshApp(){
   showToast('Refreshed');
 }
 
+async function handleResetPasswordSubmit(){
+  const newPassword = document.getElementById('reset-password-input').value;
+  document.getElementById('reset-password-error').classList.remove('show');
+
+  if(!newPassword || newPassword.length < 6){
+    const el = document.getElementById('reset-password-error');
+    el.textContent = 'Password should be at least 6 characters.';
+    el.classList.add('show');
+    return;
+  }
+
+  const btn = document.getElementById('reset-password-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try{
+    const { error } = await sb.auth.updateUser({ password: newPassword });
+    if(error) throw error;
+    document.getElementById('reset-password-input').value = '';
+    showToast('Password updated');
+    const { data } = await sb.auth.getSession();
+    currentSession = data.session;
+    await loadAllData();
+    goTo('screen-home');
+  }catch(err){
+    const el = document.getElementById('reset-password-error');
+    el.textContent = err.message || 'Could not update password. Try again.';
+    el.classList.add('show');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Save new password';
+  }
+}
+
 /* ===================== Boot / session check ===================== */
 async function init(){
   sb.auth.onAuthStateChange((event, session) => {
     if(event === 'SIGNED_OUT'){
       currentSession = null;
       goTo('screen-login');
+    }
+    if(event === 'PASSWORD_RECOVERY'){
+      currentSession = session;
+      goTo('screen-reset-password');
     }
   });
 
