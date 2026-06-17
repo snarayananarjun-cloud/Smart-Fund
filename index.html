@@ -532,7 +532,7 @@ async function ensureSharedSession(){
   const { data } = await sb.auth.getSession();
   if(data.session){
     currentSession = data.session;
-    return true;
+    return { ok: true };
   }
   try{
     const { data: signInData, error } = await sb.auth.signInWithPassword({
@@ -541,10 +541,10 @@ async function ensureSharedSession(){
     });
     if(error) throw error;
     currentSession = signInData.session;
-    return true;
+    return { ok: true };
   }catch(err){
     console.error('Shared sign-in failed', err);
-    return false;
+    return { ok: false, message: err.message || 'Unknown error' };
   }
 }
 
@@ -565,12 +565,12 @@ async function handlePinSubmit(){
   btn.disabled = true;
   btn.textContent = 'Checking…';
 
-  const ok = await ensureSharedSession();
+  const result = await ensureSharedSession();
   btn.disabled = false;
   btn.textContent = 'Confirm';
 
-  if(!ok){
-    showLoginError('Could not connect. Check your internet and try again.');
+  if(!result.ok){
+    showLoginError('Sign-in error: ' + result.message);
     return;
   }
 
@@ -1107,8 +1107,8 @@ async function init(){
 
   const pinVerified = localStorage.getItem('our_expenses_pin_verified') === '1';
   if(pinVerified){
-    const ok = await ensureSharedSession();
-    if(ok){
+    const result = await ensureSharedSession();
+    if(result.ok){
       await loadAllData();
       goTo('screen-home');
     } else {
