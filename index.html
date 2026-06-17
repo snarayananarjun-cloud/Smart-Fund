@@ -21,6 +21,16 @@
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;}
+  button, a, input, select, textarea, svg, .icon-btn, .nav-icon-btn, .filter-pill, .chip, .cat-chip, .tab-pill, .back-circle{
+    color:inherit;
+    -webkit-text-fill-color:currentColor;
+  }
+  button{
+    font:inherit;
+    -webkit-appearance:none;
+    appearance:none;
+  }
+  a{ text-decoration:none; }
   body{
     background:var(--bg);
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -94,6 +104,7 @@
   .back-circle{
     width:56px;height:56px;border:1.5px solid var(--line);border-radius:50%;
     display:flex;align-items:center;justify-content:center;background:transparent;cursor:pointer;flex-shrink:0;
+    color:var(--ink);
   }
   .back-circle svg{width:20px;height:20px;}
 
@@ -119,6 +130,7 @@
   .icon-btn{
     width:38px;height:38px;border:1.5px solid var(--line);border-radius:10px;
     display:flex;align-items:center;justify-content:center;background:transparent;cursor:pointer;flex-shrink:0;
+    color:var(--ink);
   }
   .icon-btn svg{width:16px;height:16px;}
   .summary-amount{font-size:40px;font-weight:700;letter-spacing:-0.5px;margin-bottom:8px;}
@@ -133,7 +145,7 @@
   .section-title{font-size:13px;font-weight:700;letter-spacing:1.2px;color:var(--ink-soft);text-transform:uppercase;}
   .filter-pill{
     display:flex;align-items:center;gap:6px;border:1.5px solid var(--line);border-radius:var(--radius-pill);
-    padding:9px 16px;font-size:15px;background:transparent;cursor:pointer;
+    padding:9px 16px;font-size:15px;background:transparent;cursor:pointer;color:var(--ink);
   }
   .filter-pill svg{width:13px;height:13px;}
 
@@ -160,7 +172,7 @@
   .view-all-row::before{content:"";position:absolute;top:50%;left:0;right:0;height:1px;background:var(--line);z-index:0;}
   .view-all-btn{
     position:relative;z-index:1;background:var(--bg);border:1.5px solid var(--line);
-    border-radius:var(--radius-pill);padding:11px 26px;font-size:15px;font-weight:600;cursor:pointer;
+    border-radius:var(--radius-pill);padding:11px 26px;font-size:15px;font-weight:600;cursor:pointer;color:var(--ink);
   }
 
   .empty-state{text-align:center;padding:40px 10px;color:var(--ink-soft);}
@@ -176,11 +188,12 @@
   .nav-icon-btn{
     width:52px;height:52px;border:1.5px solid var(--line);border-radius:50%;
     display:flex;align-items:center;justify-content:center;background:transparent;cursor:pointer;flex-shrink:0;
+    color:var(--ink);
   }
   .nav-icon-btn svg{width:20px;height:20px;}
   .nav-add-btn{
     flex:1;border:1.5px solid var(--line);border-radius:var(--radius-pill);padding:15px 0;
-    font-size:16px;font-weight:600;background:transparent;cursor:pointer;
+    font-size:16px;font-weight:600;background:transparent;cursor:pointer;color:var(--ink);
     display:flex;align-items:center;justify-content:center;gap:6px;
   }
 
