@@ -125,7 +125,7 @@
   .carousel-wrap::-webkit-scrollbar{display:none;}
   .carousel-track{display:flex;gap:14px;}
   .summary-card{
-    flex:0 0 calc(100% - 36px);scroll-snap-align:start;border:1.5px solid var(--line);
+    flex:0 0 100%;scroll-snap-align:start;border:1.5px solid var(--line);
     border-radius:var(--radius-card);padding:24px 22px;min-height:150px;position:relative;
   }
   .summary-card .card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
@@ -202,9 +202,11 @@
 
   .field-label{font-size:14.5px;font-weight:700;margin-bottom:12px;}
   .amount-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:30px;gap:14px;}
+  .amount-input-wrap{display:flex;align-items:baseline;flex:1;min-width:0;}
+  .amount-currency{font-size:36px;font-weight:700;color:var(--ink);margin-right:4px;flex-shrink:0;}
   .amount-display{
     font-size:36px;font-weight:700;color:var(--ink);background:none;border:none;outline:none;
-    width:55%;font-family:inherit;
+    width:100%;min-width:0;font-family:inherit;padding:0;
   }
   .amount-display::placeholder{color:#BDBDB8;}
   .confirm-btn-top{
@@ -268,6 +270,38 @@
 
   .signed-in-as{font-size:13px;color:var(--ink-soft);margin-bottom:4px;}
   .signout-link{font-size:13px;color:var(--ink-soft);text-decoration:underline;cursor:pointer;}
+
+  /* ---------- Modal (replaces native prompt/confirm) ---------- */
+  .modal-backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,0.35);
+    z-index:200;display:none;
+  }
+  .modal-backdrop.show{display:block;}
+  .modal-sheet{
+    position:fixed;left:50%;bottom:0;transform:translate(-50%, 100%);
+    width:100%;max-width:430px;background:var(--bg);
+    border-radius:24px 24px 0 0;border:1.5px solid var(--line);border-bottom:none;
+    padding:28px 24px calc(28px + env(safe-area-inset-bottom, 0px)) 24px;
+    z-index:201;transition:transform .25s ease;
+  }
+  .modal-sheet.show{transform:translate(-50%, 0);}
+  .modal-title{font-size:19px;font-weight:700;margin-bottom:6px;}
+  .modal-sub{font-size:14px;color:var(--ink-soft);margin-bottom:18px;}
+  .modal-input{
+    width:100%;border:1.5px solid var(--line);border-radius:14px;
+    padding:13px 16px;font-size:16px;margin-bottom:20px;background:transparent;
+    color:var(--ink);font-family:inherit;outline:none;
+  }
+  .modal-input::placeholder{color:#A6A6A1;}
+  .modal-actions{display:flex;gap:12px;}
+  .modal-btn-cancel{
+    flex:1;border:1.5px solid var(--line-soft);border-radius:var(--radius-pill);
+    padding:14px 0;font-size:15px;font-weight:600;background:transparent;color:var(--ink);cursor:pointer;
+  }
+  .modal-btn-confirm{
+    flex:1;border:1.5px solid var(--line);border-radius:var(--radius-pill);
+    padding:14px 0;font-size:15px;font-weight:600;background:var(--ink);color:var(--bg);cursor:pointer;
+  }
 </style>
 </head>
 <body>
@@ -406,7 +440,10 @@
 
     <div class="field-label">Enter Amount</div>
     <div class="amount-row">
-      <input class="amount-display" id="input-amount" type="text" inputmode="decimal" placeholder="€0.00" oninput="formatAmountInput(this); validateForm();" />
+      <div class="amount-input-wrap">
+        <span class="amount-currency">€</span>
+        <input class="amount-display" id="input-amount" type="text" inputmode="decimal" placeholder="0.00" oninput="formatAmountInput(this); validateForm();" />
+      </div>
       <button class="confirm-btn-top" id="confirm-top" onclick="confirmExpense()" disabled>Confirm Expense</button>
     </div>
 
@@ -439,6 +476,17 @@
     <button class="nav-add-btn" onclick="openAddExpense()">+ Add Expenses</button>
   </div>
 
+</div>
+
+<div class="modal-backdrop" id="modal-backdrop" onclick="closeModal()"></div>
+<div class="modal-sheet" id="modal-sheet" onclick="event.stopPropagation();">
+  <div class="modal-title" id="modal-title">Title</div>
+  <div class="modal-sub" id="modal-sub"></div>
+  <input class="modal-input" id="modal-input" type="text" />
+  <div class="modal-actions">
+    <button class="modal-btn-cancel" id="modal-cancel-btn" onclick="closeModal()">Cancel</button>
+    <button class="modal-btn-confirm" id="modal-confirm-btn">Confirm</button>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -508,7 +556,12 @@ async function handleAuthSubmit(){
 }
 
 async function handleSignOut(){
-  if(!confirm('Sign out on this device?')) return;
+  const confirmed = await openConfirmModal({
+    title: 'Sign out?',
+    sub: "You'll need to verify your email again to sign back in on this device.",
+    confirmLabel: 'Sign out'
+  });
+  if(!confirmed) return;
   await sb.auth.signOut();
   currentSession = null;
   localStorage.removeItem('our_expenses_remembered');
@@ -568,6 +621,69 @@ async function insertCustomCategory(name){
     name, created_by: currentSession?.user?.id || null
   });
   if(error && error.code !== '23505'){ console.error('insertCustomCategory error', error); throw error; }
+}
+
+/* ===================== Modal (replaces native prompt/confirm) ===================== */
+let modalResolve = null;
+
+function openInputModal({ title, sub, placeholder, defaultValue, confirmLabel }){
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-sub').textContent = sub || '';
+    document.getElementById('modal-sub').style.display = sub ? 'block' : 'none';
+    const input = document.getElementById('modal-input');
+    input.style.display = 'block';
+    input.placeholder = placeholder || '';
+    input.value = defaultValue || '';
+    document.getElementById('modal-confirm-btn').textContent = confirmLabel || 'Confirm';
+    document.getElementById('modal-cancel-btn').style.display = 'block';
+
+    const confirmBtn = document.getElementById('modal-confirm-btn');
+    confirmBtn.onclick = () => {
+      const val = input.value.trim();
+      hideModal();
+      resolve(val || null);
+    };
+    input.onkeydown = (e) => { if(e.key === 'Enter') confirmBtn.click(); };
+
+    showModal();
+    setTimeout(() => input.focus(), 200);
+  });
+}
+
+function openConfirmModal({ title, sub, confirmLabel }){
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-sub').textContent = sub || '';
+    document.getElementById('modal-sub').style.display = sub ? 'block' : 'none';
+    document.getElementById('modal-input').style.display = 'none';
+    document.getElementById('modal-confirm-btn').textContent = confirmLabel || 'Confirm';
+    document.getElementById('modal-cancel-btn').style.display = 'block';
+
+    document.getElementById('modal-confirm-btn').onclick = () => {
+      hideModal();
+      resolve(true);
+    };
+
+    showModal();
+  });
+}
+
+function showModal(){
+  document.getElementById('modal-backdrop').classList.add('show');
+  document.getElementById('modal-sheet').classList.add('show');
+}
+
+function hideModal(){
+  document.getElementById('modal-backdrop').classList.remove('show');
+  document.getElementById('modal-sheet').classList.remove('show');
+}
+
+function closeModal(){
+  hideModal();
+  if(modalResolve){ modalResolve(null); modalResolve = null; }
 }
 
 /* ===================== Navigation ===================== */
@@ -630,7 +746,12 @@ function renderCategoryPicker(){
 }
 
 async function addCustomCategory(){
-  const name = prompt('New category name:');
+  const name = await openInputModal({
+    title: 'New category',
+    sub: 'Give it a short, clear name.',
+    placeholder: 'e.g. Subscriptions',
+    confirmLabel: 'Add category'
+  });
   if(!name) return;
   const trimmed = name.trim();
   if(!trimmed) return;
@@ -643,6 +764,7 @@ async function addCustomCategory(){
     selectedCategory = trimmed;
     renderCategoryPicker();
     validateForm();
+    showToast('Category added');
   }catch(e){
     showToast('Could not add category');
   }
@@ -716,7 +838,13 @@ async function confirmExpense(){
 
 /* ===================== Wedding target ===================== */
 async function openWeddingTarget(){
-  const input = prompt('Set your wedding savings target (€):', weddingTarget);
+  const input = await openInputModal({
+    title: 'Wedding savings target',
+    sub: 'How much are you and Sanjana aiming to save?',
+    placeholder: 'e.g. 4500',
+    defaultValue: String(weddingTarget),
+    confirmLabel: 'Save target'
+  });
   if(input === null) return;
   const val = parseFloat(input.replace(/[^0-9.]/g,''));
   if(!val || val <= 0) return;
@@ -724,6 +852,7 @@ async function openWeddingTarget(){
     await saveWeddingTarget(val);
     weddingTarget = val;
     renderHome();
+    showToast('Target updated');
   }catch(e){
     showToast('Could not save target');
   }
