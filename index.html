@@ -110,7 +110,6 @@
   .login-loading{
     text-align:center;color:var(--ink-soft);font-size:15px;padding-top:50vh;
   }
-  #screen-check-email{justify-content:center;padding:32px 24px;}
 
   .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
   .back-circle{
@@ -326,18 +325,12 @@
     <img class="welcome-illustration" src="welcome-illustration.png" alt="" />
     <div class="welcome-eyebrow">Welcome Love!</div>
     <div class="welcome-title">We aim to spend smartly</div>
-    <div class="welcome-sub">Now just enter your Mail ID.</div>
+    <div class="welcome-sub" id="welcome-sub-text">Enter your email and password.</div>
     <div class="login-error" id="login-error"></div>
-    <input class="login-input welcome-input" id="login-email" type="email" placeholder="Type Here" autocomplete="email" />
+    <input class="login-input welcome-input" id="login-email" type="email" placeholder="Mail ID" autocomplete="email" />
+    <input class="login-input welcome-input" id="login-password" type="password" placeholder="Password" autocomplete="current-password" />
     <button class="login-btn" id="login-submit-btn" onclick="handleAuthSubmit()">Confirm</button>
-  </div>
-
-  <!-- ===================== CHECK YOUR EMAIL SCREEN ===================== -->
-  <div class="screen" id="screen-check-email">
-    <div class="login-title">Check your inbox</div>
-    <div class="login-sub" id="check-email-sub">We sent a sign-in link to your email.</div>
-    <div class="login-sub" style="margin-top:-18px;">Tap it on this device to finish signing in. You won't need to do this again here.</div>
-    <div class="login-toggle" onclick="goTo('screen-login')" style="margin-top:30px;">Use a different email</div>
+    <div class="login-toggle" id="login-toggle" onclick="toggleAuthMode()">First time here? <b>Set up your password</b></div>
   </div>
 
   <!-- ===================== HOME SCREEN ===================== -->
@@ -525,37 +518,67 @@ const BASE_CATEGORIES = ['Food','Groceries','Transport','Personal','Gifts','Ente
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 
 /* ===================== Auth ===================== */
+let authMode = 'signin'; // 'signin' | 'signup'
+
 function showLoginError(msg){
   const el = document.getElementById('login-error');
   el.textContent = msg;
   el.classList.add('show');
 }
 
+function toggleAuthMode(){
+  authMode = authMode === 'signin' ? 'signup' : 'signin';
+  document.getElementById('login-submit-btn').textContent = 'Confirm';
+  document.getElementById('welcome-sub-text').textContent = authMode === 'signin'
+    ? 'Enter your email and password.'
+    : 'Choose a password to set up your account.';
+  document.getElementById('login-toggle').innerHTML = authMode === 'signin'
+    ? 'First time here? <b>Set up your password</b>'
+    : 'Already set up? <b>Sign in instead</b>';
+  document.getElementById('login-error').classList.remove('show');
+}
+
 async function handleAuthSubmit(){
   const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const password = document.getElementById('login-password').value;
   document.getElementById('login-error').classList.remove('show');
 
-  if(!email){
-    showLoginError('Enter your email.');
+  if(!email || !password){
+    showLoginError('Enter both your email and password.');
     return;
   }
   if(!ALLOWED_EMAILS.includes(email)){
     showLoginError('This app is private. That email is not on the allowed list.');
     return;
   }
+  if(authMode === 'signup' && password.length < 6){
+    showLoginError('Password should be at least 6 characters.');
+    return;
+  }
 
   const btn = document.getElementById('login-submit-btn');
   btn.disabled = true;
-  btn.textContent = 'Sending…';
+  btn.textContent = authMode === 'signin' ? 'Signing in…' : 'Setting up…';
 
   try{
-    const { error } = await sb.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin + window.location.pathname }
-    });
-    if(error) throw error;
-    document.getElementById('check-email-sub').textContent = `We sent a sign-in link to ${email}.`;
-    goTo('screen-check-email');
+    if(authMode === 'signin'){
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if(error) throw error;
+      currentSession = data.session;
+      await afterAuthSuccess();
+    } else {
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if(error) throw error;
+      if(data.session){
+        currentSession = data.session;
+        await afterAuthSuccess();
+      } else {
+        showLoginError('Account created — sign in below.');
+        authMode = 'signin';
+        document.getElementById('welcome-sub-text').textContent = 'Enter your email and password.';
+        document.getElementById('login-toggle').innerHTML = 'First time here? <b>Set up your password</b>';
+      }
+    }
   }catch(err){
     showLoginError(err.message || 'Something went wrong. Try again.');
   }finally{
@@ -567,7 +590,7 @@ async function handleAuthSubmit(){
 async function handleSignOut(){
   const confirmed = await openConfirmModal({
     title: 'Sign out?',
-    sub: "You'll need to verify your email again to sign back in on this device.",
+    sub: "You'll need your password to sign back in on this device.",
     confirmLabel: 'Sign out'
   });
   if(!confirmed) return;
@@ -578,6 +601,7 @@ async function handleSignOut(){
 
 async function afterAuthSuccess(){
   document.getElementById('login-email').value = '';
+  document.getElementById('login-password').value = '';
   await loadAllData();
   goTo('screen-home');
 }
@@ -886,6 +910,7 @@ function isInDateRange(dateISO, filter){
 function getFilteredEntries(dateFilter, categoryFilter){
   return entries
     .filter(e => e.type === 'expense')
+    .filter(e => e.category !== 'Wedding Fund')
     .filter(e => isInDateRange(e.date, dateFilter))
     .filter(e => categoryFilter === 'All' || e.category === categoryFilter)
     .sort((a,b) => b.date.localeCompare(a.date) || (b.created_at||'').localeCompare(a.created_at||''));
@@ -896,6 +921,7 @@ function monthTotal(offsetMonths){
   const target = new Date(now.getFullYear(), now.getMonth()+offsetMonths, 1);
   return entries
     .filter(e => e.type === 'expense')
+    .filter(e => e.category !== 'Wedding Fund')
     .filter(e => {
       const d = new Date(e.date + 'T00:00:00');
       return d.getFullYear() === target.getFullYear() && d.getMonth() === target.getMonth();
@@ -918,7 +944,7 @@ function formatTxDate(iso){
 function renderCategoryFilterRow(containerId, activeFilter, onSelect){
   const row = document.getElementById(containerId);
   row.innerHTML = '';
-  const cats = ['All'].concat(allCategories());
+  const cats = ['All'].concat(allCategories().filter(c => c !== 'Wedding Fund'));
   cats.forEach(cat => {
     const chip = document.createElement('button');
     chip.className = 'chip' + (activeFilter === cat ? ' active' : '');
@@ -1049,20 +1075,7 @@ async function refreshApp(){
 
 /* ===================== Boot / session check ===================== */
 async function init(){
-  // If Supabase just redirected back here after the magic-link tap, it will
-  // briefly fire SIGNED_IN via onAuthStateChange. We listen for that below.
-  sb.auth.onAuthStateChange(async (event, session) => {
-    if(event === 'SIGNED_IN' && session){
-      const email = (session.user.email || '').toLowerCase();
-      if(ALLOWED_EMAILS.includes(email)){
-        currentSession = session;
-        await afterAuthSuccess();
-      } else {
-        await sb.auth.signOut();
-        showLoginError('That email is not allowed in this app.');
-        goTo('screen-login');
-      }
-    }
+  sb.auth.onAuthStateChange((event, session) => {
     if(event === 'SIGNED_OUT'){
       currentSession = null;
       goTo('screen-login');
@@ -1078,8 +1091,10 @@ async function init(){
     goTo('screen-login');
   }
 
-  document.getElementById('login-email').addEventListener('keydown', (e) => {
-    if(e.key === 'Enter') handleAuthSubmit();
+  ['login-email', 'login-password'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', (e) => {
+      if(e.key === 'Enter') handleAuthSubmit();
+    });
   });
 }
 init();
