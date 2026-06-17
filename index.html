@@ -99,12 +99,8 @@
     cursor:pointer;margin-top:8px;
   }
   .login-btn:disabled{opacity:0.45;cursor:not-allowed;}
-  .login-toggle{
-    text-align:center;margin-top:20px;font-size:14.5px;color:var(--ink-soft);cursor:pointer;
-  }
-  .login-toggle b{color:var(--ink);font-weight:600;}
-  #forgot-password-link{
-    margin-top:10px;font-size:13px;text-decoration:underline;
+  .pin-input{
+    text-align:center;font-size:24px;letter-spacing:8px;font-weight:700;
   }
   .login-error{
     color:var(--error);font-size:14px;margin-bottom:16px;display:none;
@@ -323,29 +319,15 @@
     <div class="login-loading">Loading…</div>
   </div>
 
-  <!-- ===================== LOGIN SCREEN ===================== -->
+  <!-- ===================== PIN SCREEN ===================== -->
   <div class="screen" id="screen-login">
     <img class="welcome-illustration" src="welcome-illustration.png" alt="" />
     <div class="welcome-eyebrow">Welcome Love!</div>
     <div class="welcome-title">We aim to spend smartly</div>
-    <div class="welcome-sub" id="welcome-sub-text">Enter your email and password.</div>
+    <div class="welcome-sub">Enter the PIN to continue.</div>
     <div class="login-error" id="login-error"></div>
-    <input class="login-input welcome-input" id="login-email" type="email" placeholder="Mail ID" autocomplete="email" />
-    <input class="login-input welcome-input" id="login-password" type="password" placeholder="Password" autocomplete="current-password" />
-    <button class="login-btn" id="login-submit-btn" onclick="handleAuthSubmit()">Confirm</button>
-    <div class="login-toggle" id="login-toggle" onclick="toggleAuthMode()">First time here? <b>Set up your password</b></div>
-    <div class="login-toggle" id="forgot-password-link" onclick="handleForgotPassword()">Forgot your password?</div>
-  </div>
-
-  <!-- ===================== RESET PASSWORD SCREEN ===================== -->
-  <div class="screen" id="screen-reset-password">
-    <img class="welcome-illustration" src="welcome-illustration.png" alt="" />
-    <div class="welcome-eyebrow">Almost there</div>
-    <div class="welcome-title">Set a new password</div>
-    <div class="welcome-sub">Choose a new password for your account.</div>
-    <div class="login-error" id="reset-password-error"></div>
-    <input class="login-input welcome-input" id="reset-password-input" type="password" placeholder="New password" autocomplete="new-password" />
-    <button class="login-btn" id="reset-password-submit-btn" onclick="handleResetPasswordSubmit()">Save new password</button>
+    <input class="login-input welcome-input pin-input" id="login-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="PIN" autocomplete="off" />
+    <button class="login-btn" id="login-submit-btn" onclick="handlePinSubmit()">Confirm</button>
   </div>
 
   <!-- ===================== HOME SCREEN ===================== -->
@@ -481,7 +463,7 @@
 
   <!-- ===================== BOTTOM NAV (home/all screens) ===================== -->
   <div class="bottom-nav" id="main-bottom-nav">
-    <button class="nav-icon-btn" title="Profile" onclick="handleSignOut()">
+    <button class="nav-icon-btn" title="Profile" onclick="openProfileModal()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
     </button>
     <button class="nav-icon-btn" title="Home" onclick="goTo('screen-home')">
@@ -512,7 +494,13 @@
 /* ===================== Supabase setup ===================== */
 const SUPABASE_URL = 'https://fojuuqsgdywgiocmxvgk.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvanV1cXNnZHl3Z2lvY214dmdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MTA1NzksImV4cCI6MjA5NzI4NjU3OX0.3kS9ANYJJZzKaCwKOjuAxgFaTbX7r1YBVxadd5DmrR8';
-const ALLOWED_EMAILS = ['snarayananarjun@gmail.com', 'sanjanavaithi@gmail.com'];
+
+// One shared account the app signs into silently. The PIN below is the only
+// thing a person actually has to know; this email/password pair just lets
+// the app authenticate to Supabase so Row Level Security still applies.
+const SHARED_ACCOUNT_EMAIL = 'snarayananarjun@gmail.com';
+const SHARED_ACCOUNT_PASSWORD = 'spend1234';
+const APP_PIN = '1098';
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -527,133 +515,121 @@ let homeCategoryFilter = 'All';
 let allCategoryFilter = 'All';
 let homeDateFilter = 'This Month';
 let allDateFilter = 'This Month';
+let currentPerson = localStorage.getItem('our_expenses_person') || 'Arjun';
 
 const BASE_CATEGORIES = ['Food','Groceries','Transport','Personal','Gifts','Entertainment','Health','Electronics','Others','Wedding Fund'];
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 
-/* ===================== Auth ===================== */
-let authMode = 'signin'; // 'signin' | 'signup'
-
+/* ===================== Auth (PIN gate + silent shared sign-in) ===================== */
 function showLoginError(msg){
   const el = document.getElementById('login-error');
   el.textContent = msg;
   el.classList.add('show');
 }
 
-function toggleAuthMode(){
-  authMode = authMode === 'signin' ? 'signup' : 'signin';
-  document.getElementById('login-submit-btn').textContent = 'Confirm';
-  document.getElementById('welcome-sub-text').textContent = authMode === 'signin'
-    ? 'Enter your email and password.'
-    : 'Choose a password to set up your account.';
-  document.getElementById('login-toggle').innerHTML = authMode === 'signin'
-    ? 'First time here? <b>Set up your password</b>'
-    : 'Already set up? <b>Sign in instead</b>';
-  document.getElementById('forgot-password-link').style.display = authMode === 'signin' ? 'block' : 'none';
-  document.getElementById('login-error').classList.remove('show');
-}
-
-async function handleForgotPassword(){
-  const email = document.getElementById('login-email').value.trim().toLowerCase();
-  document.getElementById('login-error').classList.remove('show');
-
-  if(!email){
-    showLoginError('Type your email above first, then tap "Forgot your password?".');
-    return;
+async function ensureSharedSession(){
+  const { data } = await sb.auth.getSession();
+  if(data.session){
+    currentSession = data.session;
+    return true;
   }
-  if(!ALLOWED_EMAILS.includes(email)){
-    showLoginError('That email is not on the allowed list.');
-    return;
-  }
-
-  const link = document.getElementById('forgot-password-link');
-  const originalText = link.textContent;
-  link.textContent = 'Sending reset link…';
-
   try{
-    const { error } = await sb.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + window.location.pathname
+    const { data: signInData, error } = await sb.auth.signInWithPassword({
+      email: SHARED_ACCOUNT_EMAIL,
+      password: SHARED_ACCOUNT_PASSWORD
     });
     if(error) throw error;
-    await openConfirmModal({
-      title: 'Check your inbox',
-      sub: `We sent a password reset link to ${email}. Tap it, choose a new password there, then come back here and sign in with it.`,
-      confirmLabel: 'Got it'
-    });
+    currentSession = signInData.session;
+    return true;
   }catch(err){
-    showLoginError(err.message || 'Could not send reset link. Try again.');
-  }finally{
-    link.textContent = originalText;
+    console.error('Shared sign-in failed', err);
+    return false;
   }
 }
 
-async function handleAuthSubmit(){
-  const email = document.getElementById('login-email').value.trim().toLowerCase();
-  const password = document.getElementById('login-password').value;
+async function handlePinSubmit(){
+  const pin = document.getElementById('login-pin').value.trim();
   document.getElementById('login-error').classList.remove('show');
 
-  if(!email || !password){
-    showLoginError('Enter both your email and password.');
+  if(!pin){
+    showLoginError('Enter the PIN.');
     return;
   }
-  if(!ALLOWED_EMAILS.includes(email)){
-    showLoginError('This app is private. That email is not on the allowed list.');
-    return;
-  }
-  if(authMode === 'signup' && password.length < 6){
-    showLoginError('Password should be at least 6 characters.');
+  if(pin !== APP_PIN){
+    showLoginError('Incorrect PIN.');
     return;
   }
 
   const btn = document.getElementById('login-submit-btn');
   btn.disabled = true;
-  btn.textContent = authMode === 'signin' ? 'Signing in…' : 'Setting up…';
+  btn.textContent = 'Checking…';
 
-  try{
-    if(authMode === 'signin'){
-      const { data, error } = await sb.auth.signInWithPassword({ email, password });
-      if(error) throw error;
-      currentSession = data.session;
-      await afterAuthSuccess();
-    } else {
-      const { data, error } = await sb.auth.signUp({ email, password });
-      if(error) throw error;
-      if(data.session){
-        currentSession = data.session;
-        await afterAuthSuccess();
-      } else {
-        showLoginError('Account created — sign in below.');
-        authMode = 'signin';
-        document.getElementById('welcome-sub-text').textContent = 'Enter your email and password.';
-        document.getElementById('login-toggle').innerHTML = 'First time here? <b>Set up your password</b>';
-      }
-    }
-  }catch(err){
-    showLoginError(err.message || 'Something went wrong. Try again.');
-  }finally{
-    btn.disabled = false;
-    btn.textContent = 'Confirm';
+  const ok = await ensureSharedSession();
+  btn.disabled = false;
+  btn.textContent = 'Confirm';
+
+  if(!ok){
+    showLoginError('Could not connect. Check your internet and try again.');
+    return;
   }
+
+  document.getElementById('login-pin').value = '';
+  localStorage.setItem('our_expenses_pin_verified', '1');
+  await loadAllData();
+  goTo('screen-home');
 }
 
 async function handleSignOut(){
   const confirmed = await openConfirmModal({
     title: 'Sign out?',
-    sub: "You'll need your password to sign back in on this device.",
+    sub: "You'll need to enter the PIN again to get back in on this device.",
     confirmLabel: 'Sign out'
   });
   if(!confirmed) return;
-  await sb.auth.signOut();
+  localStorage.removeItem('our_expenses_pin_verified');
   currentSession = null;
   goTo('screen-login');
 }
 
-async function afterAuthSuccess(){
-  document.getElementById('login-email').value = '';
-  document.getElementById('login-password').value = '';
-  await loadAllData();
-  goTo('screen-home');
+/* ===================== Logging-as (person switcher) ===================== */
+function openProfileModal(){
+  document.getElementById('modal-title').textContent = 'Logging as';
+  document.getElementById('modal-sub').textContent = 'Who is adding expenses on this device right now?';
+  document.getElementById('modal-sub').style.display = 'block';
+  document.getElementById('modal-input').style.display = 'none';
+
+  const existingPicker = document.getElementById('person-picker-row');
+  if(existingPicker) existingPicker.remove();
+
+  const pickerRow = document.createElement('div');
+  pickerRow.id = 'person-picker-row';
+  pickerRow.style.display = 'flex';
+  pickerRow.style.gap = '10px';
+  pickerRow.style.marginBottom = '22px';
+  ['Arjun', 'Sanjana'].forEach(person => {
+    const btn = document.createElement('button');
+    btn.textContent = person;
+    btn.className = 'cat-chip' + (currentPerson === person ? ' selected' : '');
+    btn.style.flex = '1';
+    btn.style.justifyContent = 'center';
+    btn.onclick = () => {
+      currentPerson = person;
+      localStorage.setItem('our_expenses_person', person);
+      hideModal();
+      showToast(`Now logging as ${person}`);
+    };
+    pickerRow.appendChild(btn);
+  });
+  document.getElementById('modal-input').insertAdjacentElement('afterend', pickerRow);
+
+  document.getElementById('modal-confirm-btn').textContent = 'Sign out instead';
+  document.getElementById('modal-confirm-btn').onclick = () => {
+    hideModal();
+    handleSignOut();
+  };
+  document.getElementById('modal-cancel-btn').style.display = 'block';
+  showModal();
 }
 
 /* ===================== Data layer (Supabase) ===================== */
@@ -899,15 +875,13 @@ async function confirmExpense(){
   const desc = document.getElementById('input-description').value.trim();
   if(!(amount > 0 && selectedCategory && desc)) return;
 
-  const person = currentSession?.user?.email === 'sanjanavaithi@gmail.com' ? 'Sanjana' : 'Arjun';
-
   try{
     await insertExpense({
       amount: Math.round(amount * 100) / 100,
       category: selectedCategory,
       description: desc,
       date: selectedDateISO,
-      person
+      person: currentPerson
     });
     await loadExpenses();
     showToast('Expense added');
@@ -1123,66 +1097,30 @@ async function refreshApp(){
   showToast('Refreshed');
 }
 
-async function handleResetPasswordSubmit(){
-  const newPassword = document.getElementById('reset-password-input').value;
-  document.getElementById('reset-password-error').classList.remove('show');
-
-  if(!newPassword || newPassword.length < 6){
-    const el = document.getElementById('reset-password-error');
-    el.textContent = 'Password should be at least 6 characters.';
-    el.classList.add('show');
-    return;
-  }
-
-  const btn = document.getElementById('reset-password-submit-btn');
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-
-  try{
-    const { error } = await sb.auth.updateUser({ password: newPassword });
-    if(error) throw error;
-    document.getElementById('reset-password-input').value = '';
-    showToast('Password updated');
-    const { data } = await sb.auth.getSession();
-    currentSession = data.session;
-    await loadAllData();
-    goTo('screen-home');
-  }catch(err){
-    const el = document.getElementById('reset-password-error');
-    el.textContent = err.message || 'Could not update password. Try again.';
-    el.classList.add('show');
-  }finally{
-    btn.disabled = false;
-    btn.textContent = 'Save new password';
-  }
-}
-
 /* ===================== Boot / session check ===================== */
 async function init(){
   sb.auth.onAuthStateChange((event, session) => {
     if(event === 'SIGNED_OUT'){
       currentSession = null;
-      goTo('screen-login');
-    }
-    if(event === 'PASSWORD_RECOVERY'){
-      currentSession = session;
-      goTo('screen-reset-password');
     }
   });
 
-  const { data } = await sb.auth.getSession();
-  if(data.session && ALLOWED_EMAILS.includes((data.session.user.email||'').toLowerCase())){
-    currentSession = data.session;
-    await loadAllData();
-    goTo('screen-home');
+  const pinVerified = localStorage.getItem('our_expenses_pin_verified') === '1';
+  if(pinVerified){
+    const ok = await ensureSharedSession();
+    if(ok){
+      await loadAllData();
+      goTo('screen-home');
+    } else {
+      localStorage.removeItem('our_expenses_pin_verified');
+      goTo('screen-login');
+    }
   } else {
     goTo('screen-login');
   }
 
-  ['login-email', 'login-password'].forEach(id => {
-    document.getElementById(id).addEventListener('keydown', (e) => {
-      if(e.key === 'Enter') handleAuthSubmit();
-    });
+  document.getElementById('login-pin').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter') handlePinSubmit();
   });
 }
 init();
