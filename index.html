@@ -4,6 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Our Expenses</title>
+
+<!-- Makes this installable and lets iOS treat it as a real standalone app -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#ECECEA" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Our Expenses" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="icon" href="icon-192.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -564,13 +573,11 @@ async function handleSignOut(){
   if(!confirmed) return;
   await sb.auth.signOut();
   currentSession = null;
-  localStorage.removeItem('our_expenses_remembered');
   goTo('screen-login');
 }
 
 async function afterAuthSuccess(){
   document.getElementById('login-email').value = '';
-  localStorage.setItem('our_expenses_remembered', '1');
   await loadAllData();
   goTo('screen-home');
 }
@@ -1065,7 +1072,6 @@ async function init(){
   const { data } = await sb.auth.getSession();
   if(data.session && ALLOWED_EMAILS.includes((data.session.user.email||'').toLowerCase())){
     currentSession = data.session;
-    localStorage.setItem('our_expenses_remembered', '1');
     await loadAllData();
     goTo('screen-home');
   } else {
